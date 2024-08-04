@@ -7,7 +7,7 @@ local ffi = require "ffi"
 -- Cache frequently used ffi.* & client.* functions for performance
 local ffi_cast, client_find_signature = ffi.cast, client.find_signature
 
--- Find the jmp ecx instruction in engine.dll
+-- Find the stdcall thunk instruction in engine.dll
 local signature_jmpecx = client_find_signature("engine.dll", "\xFF\xE1") or error "engine.dll!::jmp ecx couldn't be found"
 
 -- Find GetModuleHandle and GetProcAddress in engine.dll
@@ -19,15 +19,15 @@ local thunk = function(address, typestring)
     return function(...) return ffi_cast(typestring, signature_jmpecx)(address, ...) end
 end
 
--- Initialize the GetModuleHandle and GetProcAddress functions using the previously found addresses and jmp instruction
+-- Initialize the GetModuleHandle and GetProcAddress functions using the previously found addresses and stdcall thunk instruction
 local native_GetModuleHandle = thunk(ffi_cast("void***", ffi_cast("uint32_t", signature_GetModuleHandle) + 2)[0][0], "void*(__thiscall*)(void*, const char*)")
 local native_GetProcAddress = thunk(ffi_cast("void***", ffi_cast("uint32_t", signature_GetProcessAddress) + 2)[0][0], "void*(__thiscall*)(void*, void*, const char*)")
 
--- Define a bind function to retrieve function pointers by module name, address, and typestring
+-- Binding function to retrieve function pointers by module name, address, and typestring
 local bind = function(module_name, address, typestring)
     local handle = native_GetModuleHandle(module_name)
     return function(...) return thunk(native_GetProcessAddress(handle, address), typestring) end
 end
 
--- Example usage: binding FindWindowA function from kernel32.dll
+-- Example: binding FindWindowA from kernel32.dll
 local native_FindWindowA = bind("kernel32.dll", "FindWindowA", "void*(__thiscall*)(void*, const char*, const char*)")
